@@ -1,166 +1,211 @@
 import streamlit as st
 import pandas as pd
 import os
+import datetime
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Team Shuaib Project Manager", layout="wide")
 st.title("Team Shuaib Management System")
 
-# --- FILE CONFIGURATION ---
-# This must match your uploaded Excel file name exactly
+# --- CONFIGURATION ---
 EXCEL_FILE = "Team Shuaib Daily Status.xlsx"
+
+# --- TASK KEYWORDS LIST ---
+TASK_KEYWORDS = [
+    "File Setup/Cad Placement", "Refrence collection/ Asset check", "Site Setup/Exterior Modeling",
+    "Massing/Bowl Modeling", "Exterior Modeling", "Bowl Detailing , Vomitory, Aisles",
+    "Concourse Area", "Premium Facade", "Railclone set/ Railing Placement",
+    "Site Modeling", "Field/ Court/ Stage setup", "Detailing", "Stadium self QA and refinement",
+    "Texturing", "Chair Modeling", "Roof Modeling", "Texturing & Lighting", "Chair QC",
+    "ScoreBoard Modeling", "Chair Railcone set", "Refinement", "QC Comments",
+    "Spline Extracting/Spline Naming", "Site Texturing/Lighting", "Seat Node Generate",
+    "Finalize QC & Refinment", "Chair Placement", "Refinement and shoot Test renders",
+    "Aerial Level Adjustment", "Data Model", "Test Render QA/Refinments",
+    "Self QA & QC changes", "Data Model/Json/Price Map", "Shoot Beta renders",
+    "Json/Price Map", "AMVV Beauty And site testing", "Beta Assets Deliver",
+    "AMVV Chair Break", "AMVV Data Model", "Raster file prepration",
+    "AMVV Chair naming and random color", "AMVV Test renders", 
+    "Vecor File preration/Test renders", "WireColor Competes and Json",
+    "Internal QA/Client comments", "Final render shoot for STG", "Shoot final renders",
+    "AMVV test render QC", "Grouping and Bounds", 
+    "Final Assets prepration and Public VV Delivery", "AMVV Final render shoot",
+    "CMS/4D", "AMVV asset prepration and Assets Delivery", 
+    "Assets Combine and QC Comments", "STG assets Uploading and STG", "Internal QA",
+    "STG QA", "Bowl Change", "Structure Change", "Score Board Design",
+    "Railing Change", "Seat Type Change", "Branding 3D Logo", "Banner",
+    "Rafter / Country Flag's", "Team Logo", "Price Map", 
+    "Manifest - Row name update /Seat /Section number", 
+    "Rollover - VR Position change", "Level Altering - Level add/remove /update",
+    "Lighting Changes (Day/Evening/Night)", "Field Change", "Premium Space Layout",
+    "Furniture", "Config Change - adding Multiple Config", "Web-Shell changes"
+]
 
 @st.cache_data
 def load_data():
-    """
-    Loads data from the Excel file.
-    Includes error handling for missing tabs or columns.
-    """
     if not os.path.exists(EXCEL_FILE):
         return None, None
 
-    # -------------------------------------------
-    # PART 1: LOAD PROJECT LEDGERS
-    # -------------------------------------------
+    # --- 1. LOAD MASTER LEDGER (For Jira Links) ---
     projects = []
     
-    # Helper function to load a sheet if it exists
-    def get_sheet(sheet_name, type_name):
+    def get_sheet(name, type_name):
         try:
-            df = pd.read_excel(EXCEL_FILE, sheet_name=sheet_name)
+            df = pd.read_excel(EXCEL_FILE, sheet_name=name)
             df['Type'] = type_name
             return df
-        except:
-            return None
+        except: return None
 
-    # 1. Load 3D Project Ledger
-    df_3d = get_sheet("3D Project Ledger", "3D Project")
-    if df_3d is not None: 
-        projects.append(df_3d)
+    # Load and combine ledgers
+    for sheet, ptype in [
+        ("3D Project Ledger", "3D"), 
+        ("WEB-Shell--Project Ledger", "Web"),
+        ("LNOO Venues", "LNOO"), ("PDA Venues", "PDA"), 
+        ("Connected Camera Venuer", "Cam")
+    ]:
+        df = get_sheet(sheet, ptype)
+        if df is not None:
+            # Normalize Jira Column Name
+            if 'Jira Link' in df.columns: df = df.rename(columns={'Jira Link': 'JIRA'})
+            if 'Jira' in df.columns: df = df.rename(columns={'Jira': 'JIRA'})
+            if 'Web Shell update' in df.columns: df = df.rename(columns={'Web Shell update': 'Name of project'})
+            if 'Project' in df.columns: df = df.rename(columns={'Project': 'Name of project'})
+            projects.append(df)
+            
+    master_ledger = pd.concat(projects, ignore_index=True) if projects else pd.DataFrame()
 
-    # 2. Load Web Shell Ledger
-    df_web = get_sheet("WEB-Shell--Project Ledger", "Web Shell")
-    if df_web is not None:
-        # Rename columns to match the master list
-        df_web = df_web.rename(columns={'Web Shell update': 'Name of project', 'Jira Link': 'JIRA'})
-        projects.append(df_web)
-
-    # 3. Load Venue Specific Tabs
-    venue_tabs = [
-        ("LNOO Venues", "LNOO"), 
-        ("PDA Venues", "PDA"), 
-        ("Connected Camera Venuer", "Connected Cam")
-    ]
-    
-    for sheet, v_type in venue_tabs:
-        df_v = get_sheet(sheet, v_type)
-        if df_v is not None:
-            # Standardize column names
-            if 'Project' in df_v.columns: 
-                df_v = df_v.rename(columns={'Project': 'Name of project', 'Jira': 'JIRA'})
-            projects.append(df_v)
-    
-    # Combine all ledgers
-    if projects:
-        master_ledger = pd.concat(projects, ignore_index=True)
-    else:
-        master_ledger = pd.DataFrame()
-    
-    # -------------------------------------------
-    # PART 2: LOAD DAILY STATUS (2026 Tab)
-    # -------------------------------------------
-    daily_status = pd.DataFrame()
-    
+    # --- 2. LOAD DAILY STATUS (2026) ---
     try:
-        # We read with header=None because the dates are in odd places
+        # Read raw data
         df_daily = pd.read_excel(EXCEL_FILE, sheet_name="2026", header=None)
         
-        # --- CRITICAL FIX FOR KEYERROR ---
-        # The app expects 12 columns (Index 0 to 11). 
-        # If the Excel sheet is empty or new, it might have fewer.
-        # This loop adds empty columns until we have at least 12.
+        # Ensure enough columns exist (we need at least 11 for the parsing logic)
         while df_daily.shape[1] < 12:
             df_daily[df_daily.shape[1]] = "" 
 
         clean_rows = []
         current_date = None
         
-        # Iterate through rows to find Dates and Data
         for index, row in df_daily.iterrows():
             val_0 = str(row[0])
             
-            # 1. Detect Date (Example: "2026-02-09")
+            # Detect Date
             if val_0.startswith('2026-'):
-                current_date = val_0
+                current_date = val_0.split(' ')[0] # Remove time if present
                 continue
             
-            # 2. Detect Team Member Data
-            # Column 2 usually has the Name
-            member_name = str(row[2])
+            # Parse Rows
+            # Column Mapping based on your 2026.csv structure:
+            # 0:Date, 1:Lead, 2:Member, 3:Attendance, 4:Archive, 5:Project/Jira, 6:Status, 8:Morning/Task
             
-            # Filter out empty rows, headers, or notes
+            member_name = str(row[2])
             if member_name != 'nan' and member_name != 'Member' and "Note:" not in val_0:
+                
+                # Try to find Jira Link from Master Ledger if missing in row
+                project_name = str(row[5]) if str(row[5]) != 'nan' else ''
+                jira_link = ""
+                if not master_ledger.empty and project_name:
+                    match = master_ledger[master_ledger['Name of project'].astype(str).str.contains(project_name, regex=False, case=False)]
+                    if not match.empty:
+                        jira_link = match.iloc[0]['JIRA'] if 'JIRA' in match.columns else ""
+
                 clean_rows.append({
-                    'Date': current_date,
+                    'Date': pd.to_datetime(current_date).date(), # Date Object
+                    'Team Lead': str(row[1]) if str(row[1]) != 'nan' else '',
                     'Member': member_name,
-                    # We use safe checks to avoid crashing if cells are empty
-                    'Attendance': str(row[3]) if str(row[3]) != 'nan' else '',
-                    'Project': str(row[5]) if str(row[5]) != 'nan' else '',
-                    'Morning': str(row[10]) if str(row[10]) != 'nan' else '',
-                    'Evening': str(row[11]) if str(row[11]) != 'nan' else ''
+                    'Attendance': str(row[3]) if str(row[3]) != 'nan' else 'Out',
+                    'Project Archive': str(row[4]) if str(row[4]) != 'nan' else '',
+                    'Project Name': project_name,
+                    'Jira Link': jira_link if jira_link else project_name, # Fallback to name if no link
+                    'Project Status': str(row[6]) if str(row[6]) != 'nan' else 'In Process',
+                    'Task Category': 'File Setup/Cad Placement', # Default/Placeholder
+                    'Hours': 0.0,
+                    'Comments': str(row[8]) if str(row[8]) != 'nan' else ''
                 })
-        
+                
         daily_status = pd.DataFrame(clean_rows)
         
     except Exception as e:
-        # If reading 2026 fails, we print the error to the logs but keep the app running
-        print(f"Error loading daily status: {e}")
+        print(f"Error: {e}")
         daily_status = pd.DataFrame()
 
     return master_ledger, daily_status
 
-# Load the data
 ledger, status = load_data()
 
 # --- APP LAYOUT ---
 tab1, tab2 = st.tabs(["📊 Daily Dashboard", "🗂️ Project Master List"])
 
-# --- TAB 1: DASHBOARD ---
 with tab1:
     if status is not None and not status.empty:
-        col1, col2 = st.columns(2)
-        
+        # Filters
+        col1, col2, col3 = st.columns(3)
         with col1:
-            # Sort dates so the newest is first
             dates = sorted(status['Date'].unique(), reverse=True)
             sel_date = st.selectbox("Select Date", dates)
-            
         with col2:
-            # Filter by team member
             members = sorted(status['Member'].unique())
             sel_member = st.multiselect("Filter by Member", members)
+        with col3:
+            statuses = sorted(status['Project Status'].unique())
+            sel_status = st.multiselect("Filter by Status", statuses)
         
-        # Apply filters
+        # Filter Data
         filtered_df = status[status['Date'] == sel_date]
         if sel_member:
             filtered_df = filtered_df[filtered_df['Member'].isin(sel_member)]
-            
-        st.dataframe(filtered_df, use_container_width=True)
+        if sel_status:
+            filtered_df = filtered_df[filtered_df['Project Status'].isin(sel_status)]
+
+        # --- DATA EDITOR (DROPDOWN CONFIGURATION) ---
+        # This makes the table look like it has dropdowns
+        st.data_editor(
+            filtered_df,
+            column_config={
+                "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
+                "Attendance": st.column_config.SelectboxColumn(
+                    "Attendance",
+                    options=["In", "Out", "WFH"],
+                    required=True,
+                    width="small"
+                ),
+                "Project Status": st.column_config.SelectboxColumn(
+                    "Project Status",
+                    options=[
+                        "In Process", "QA", "Hold", 
+                        "Blocked due to IT issues", "Assigned", "Completed"
+                    ],
+                    width="medium"
+                ),
+                "Task Category": st.column_config.SelectboxColumn(
+                    "Task Log",
+                    options=TASK_KEYWORDS,
+                    width="large",
+                    help="Select the specific task performed"
+                ),
+                "Hours": st.column_config.NumberColumn(
+                    "Hrs",
+                    min_value=0,
+                    max_value=24,
+                    step=0.5,
+                    format="%.1f"
+                ),
+                "Jira Link": st.column_config.LinkColumn("Jira Link")
+            },
+            hide_index=True,
+            use_container_width=True,
+            disabled=True # Set to False if you want to allow temporary editing in browser
+        )
         
     else:
-        st.info("No Daily Status data found. Please check that your Excel file has a tab named '2026'.")
+        st.info("No Daily Status data found.")
 
-# --- TAB 2: MASTER LIST ---
 with tab2:
     if ledger is not None and not ledger.empty:
-        search = st.text_input("🔍 Search Projects (Name, JIRA, or Lead)")
-        
+        search = st.text_input("🔍 Search Projects")
         if search:
-            # Search across all columns
             mask = ledger.apply(lambda x: x.astype(str).str.contains(search, case=False).any(), axis=1)
             st.dataframe(ledger[mask], use_container_width=True)
         else:
             st.dataframe(ledger, use_container_width=True)
-            
     else:
-        st.warning("No Project Ledger data found. Please check your Excel tab names.")
+        st.warning("No Project Ledger data found.")
