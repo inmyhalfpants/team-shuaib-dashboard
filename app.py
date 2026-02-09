@@ -14,86 +14,6 @@ EXCEL_FILE = "Team Shuaib Daily Status.xlsx"
 ATTENDANCE_OPTIONS = ["In", "Out", "WFH"]
 STATUS_OPTIONS = ["In Process", "QA", "Hold", "Blocked due to IT issues", "Assigned", "Completed"]
 
-# --- TASK KEYWORDS (Formatted to avoid Syntax Errors) ---
-TASK_KEYWORDS = [
-    "File Setup/Cad Placement",
-    "Refrence collection/ Asset check",
-    "Site Setup/Exterior Modeling",
-    "Massing/Bowl Modeling",
-    "Exterior Modeling",
-    "Bowl Detailing , Vomitory, Aisles",
-    "Concourse Area",
-    "Premium Facade",
-    "Railclone set/ Railing Placement",
-    "Site Modeling",
-    "Field/ Court/ Stage setup",
-    "Detailing",
-    "Stadium self QA and refinement",
-    "Texturing",
-    "Chair Modeling",
-    "Roof Modeling",
-    "Texturing & Lighting",
-    "Chair QC",
-    "ScoreBoard Modeling",
-    "Chair Railcone set",
-    "Refinement",
-    "QC Comments",
-    "Spline Extracting/Spline Naming",
-    "Site Texturing/Lighting",
-    "Seat Node Generate",
-    "Finalize QC & Refinment",
-    "Chair Placement",
-    "Refinement and shoot Test renders",
-    "Aerial Level Adjustment",
-    "Data Model",
-    "Test Render QA/Refinments",
-    "Self QA & QC changes",
-    "Data Model/Json/Price Map",
-    "Shoot Beta renders",
-    "Json/Price Map",
-    "AMVV Beauty And site testing",
-    "Beta Assets Deliver",
-    "AMVV Chair Break",
-    "AMVV Data Model",
-    "Raster file prepration",
-    "AMVV Chair naming and random color",
-    "AMVV Test renders",
-    "Vecor File preration/Test renders",
-    "WireColor Competes and Json",
-    "Internal QA/Client comments",
-    "Final render shoot for STG",
-    "Shoot final renders",
-    "AMVV test render QC",
-    "Grouping and Bounds",
-    "Final Assets prepration and Public VV Delivery",
-    "AMVV Final render shoot",
-    "CMS/4D",
-    "AMVV asset prepration and Assets Delivery",
-    "Assets Combine and QC Comments",
-    "STG assets Uploading and STG",
-    "Internal QA",
-    "STG QA",
-    "Bowl Change",
-    "Structure Change",
-    "Score Board Design",
-    "Railing Change",
-    "Seat Type Change",
-    "Branding 3D Logo",
-    "Banner",
-    "Rafter / Country Flag's",
-    "Team Logo",
-    "Price Map",
-    "Manifest - Row name update /Seat /Section number",
-    "Rollover - VR Position change",
-    "Level Altering - Level add/remove /update",
-    "Lighting Changes (Day/Evening/Night)",
-    "Field Change",
-    "Premium Space Layout",
-    "Furniture",
-    "Config Change - adding Multiple Config",
-    "Web-Shell changes"
-]
-
 @st.cache_data
 def load_data():
     if not os.path.exists(EXCEL_FILE):
@@ -111,7 +31,6 @@ def load_data():
         except: return None
 
     # Load and combine ledgers
-    # We use a list to avoid any syntax issues with long lines
     sheet_configs = [
         ("3D Project Ledger", "3D"), 
         ("WEB-Shell--Project Ledger", "Web"),
@@ -176,8 +95,8 @@ def load_data():
                     'Project Name': project_name,
                     'Jira Link': jira_link if jira_link else project_name, 
                     'Project Status': str(row[6]) if str(row[6]) != 'nan' else 'In Process',
-                    'Task Category': 'File Setup/Cad Placement', # Default
-                    'Hours': 0.0,
+                    'Morning Status': str(row[10]) if str(row[10]) != 'nan' else '', # Assuming col 10 is Morning
+                    'Evening Status': str(row[11]) if str(row[11]) != 'nan' else '', # Assuming col 11 is Evening
                     'Comments': str(row[8]) if str(row[8]) != 'nan' else ''
                 })
                 
@@ -202,18 +121,20 @@ with tab1:
             dates = sorted(status['Date'].unique(), reverse=True)
             sel_date = st.selectbox("Select Date", dates)
         with col2:
-            st.info("💡 Tip: Click on any cell in 'Attendance', 'Status', or 'Task Log' to change it.")
+            st.info("💡 All cells are editable. Click to change.")
         
         # Filter Data
-        filtered_df = status[status['Date'] == sel_date]
+        filtered_df = status[status['Date'] == sel_date].copy()
+        
+        # Drop redundant Date column for display
+        display_df = filtered_df.drop(columns=['Date'])
 
         # --- INTERACTIVE DATA EDITOR ---
         edited_df = st.data_editor(
-            filtered_df,
+            display_df,
             column_config={
-                "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD", disabled=True),
-                "Team Lead": st.column_config.TextColumn("Team Lead", disabled=True),
-                "Member": st.column_config.TextColumn("Member", disabled=True),
+                "Team Lead": st.column_config.TextColumn("Team Lead"),
+                "Member": st.column_config.TextColumn("Member"),
                 
                 # --- DROPDOWNS ---
                 "Attendance": st.column_config.SelectboxColumn(
@@ -228,17 +149,12 @@ with tab1:
                     required=True,
                     width="medium"
                 ),
-                "Task Category": st.column_config.SelectboxColumn(
-                    "Task Log",
-                    options=TASK_KEYWORDS,
-                    width="large",
-                    required=True
-                ),
                 # -----------------
                 
-                "Hours": st.column_config.NumberColumn("Hrs", min_value=0, max_value=24, step=0.5),
                 "Project Archive": st.column_config.TextColumn("Project Archive"),
                 "Jira Link": st.column_config.LinkColumn("Jira Link", display_text="Open Jira"),
+                "Morning Status": st.column_config.TextColumn("Morning Update", width="medium"),
+                "Evening Status": st.column_config.TextColumn("Evening Update", width="medium"),
                 "Comments": st.column_config.TextColumn("Comments", width="large"),
             },
             hide_index=True,
@@ -248,9 +164,10 @@ with tab1:
         )
         
         # Download Button
-        st.write("### Download Updates")
-        st.caption("Since this is a web app, it cannot save directly to your Excel file. Download the CSV below and copy the rows back to Excel if needed.")
+        st.write("### Save Changes")
         if st.button("Download Updated Sheet as CSV"):
+            # We need to add the Date back before saving
+            edited_df['Date'] = sel_date
             csv = edited_df.to_csv(index=False).encode('utf-8')
             st.download_button("Click here to Download", csv, "updated_status.csv", "text/csv")
         
