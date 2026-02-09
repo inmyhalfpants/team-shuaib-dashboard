@@ -14,7 +14,7 @@ EXCEL_FILE = "Team Shuaib Daily Status.xlsx"
 ATTENDANCE_OPTIONS = ["In", "Out", "WFH"]
 STATUS_OPTIONS = ["In Process", "QA", "Hold", "Blocked due to IT issues", "Assigned", "Completed"]
 
-# Reformatted list to prevent syntax errors
+# --- TASK KEYWORDS (Formatted to avoid Syntax Errors) ---
 TASK_KEYWORDS = [
     "File Setup/Cad Placement",
     "Refrence collection/ Asset check",
@@ -102,6 +102,7 @@ def load_data():
     # --- 1. LOAD MASTER LEDGER (For Jira Links) ---
     projects = []
     
+    # Helper to safely get sheet
     def get_sheet(name, type_name):
         try:
             df = pd.read_excel(EXCEL_FILE, sheet_name=name)
@@ -110,18 +111,19 @@ def load_data():
         except: return None
 
     # Load and combine ledgers
-    sheets_to_load = [
+    # We use a list to avoid any syntax issues with long lines
+    sheet_configs = [
         ("3D Project Ledger", "3D"), 
         ("WEB-Shell--Project Ledger", "Web"),
         ("LNOO Venues", "LNOO"), 
         ("PDA Venues", "PDA"), 
         ("Connected Camera Venuer", "Cam")
     ]
-    
-    for sheet, ptype in sheets_to_load:
+
+    for sheet, ptype in sheet_configs:
         df = get_sheet(sheet, ptype)
         if df is not None:
-            # Normalize Jira Column Name
+            # Normalize Columns
             if 'Jira Link' in df.columns: df = df.rename(columns={'Jira Link': 'JIRA'})
             if 'Jira' in df.columns: df = df.rename(columns={'Jira': 'JIRA'})
             if 'Web Shell update' in df.columns: df = df.rename(columns={'Web Shell update': 'Name of project'})
@@ -159,8 +161,10 @@ def load_data():
                 project_name = str(row[5]) if str(row[5]) != 'nan' else ''
                 jira_link = ""
                 if not master_ledger.empty and project_name:
+                    # Fuzzy search for project name
                     match = master_ledger[master_ledger['Name of project'].astype(str).str.contains(project_name, regex=False, case=False)]
                     if not match.empty:
+                        # Get the first match's JIRA link
                         jira_link = match.iloc[0]['JIRA'] if 'JIRA' in match.columns else ""
 
                 clean_rows.append({
@@ -244,16 +248,18 @@ with tab1:
         )
         
         # Download Button
-        if st.button("Download Updated Sheet"):
+        st.write("### Download Updates")
+        st.caption("Since this is a web app, it cannot save directly to your Excel file. Download the CSV below and copy the rows back to Excel if needed.")
+        if st.button("Download Updated Sheet as CSV"):
             csv = edited_df.to_csv(index=False).encode('utf-8')
-            st.download_button("Click to Download CSV", csv, "updated_status.csv", "text/csv")
+            st.download_button("Click here to Download", csv, "updated_status.csv", "text/csv")
         
     else:
-        st.info("No Daily Status data found.")
+        st.info("No Daily Status data found. Please check your Excel file structure.")
 
 with tab2:
     if ledger is not None and not ledger.empty:
-        search = st.text_input("🔍 Search Projects")
+        search = st.text_input("🔍 Search Projects (Name, Jira, or Scope)")
         if search:
             mask = ledger.apply(lambda x: x.astype(str).str.contains(search, case=False).any(), axis=1)
             st.dataframe(ledger[mask], use_container_width=True)
