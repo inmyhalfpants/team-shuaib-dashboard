@@ -30,35 +30,4 @@ TASK_KEYWORDS = [
     "Vecor File preration/Test renders", "WireColor Competes and Json",
     "Internal QA/Client comments", "Final render shoot for STG", "Shoot final renders",
     "AMVV test render QC", "Grouping and Bounds", 
-    "Final Assets prepration and Public VV Delivery", "AMVV Final render shoot",
-    "CMS/4D", "AMVV asset prepration and Assets Delivery", 
-    "Assets Combine and QC Comments", "STG assets Uploading and STG", "Internal QA",
-    "STG QA", "Bowl Change", "Structure Change", "Score Board Design",
-    "Railing Change", "Seat Type Change", "Branding 3D Logo", "Banner",
-    "Rafter / Country Flag's", "Team Logo", "Price Map", 
-    "Manifest - Row name update /Seat /Section number", 
-    "Rollover - VR Position change", "Level Altering - Level add/remove /update",
-    "Lighting Changes (Day/Evening/Night)", "Field Change", "Premium Space Layout",
-    "Furniture", "Config Change - adding Multiple Config", "Web-Shell changes"
-]
-
-@st.cache_data
-def load_data():
-    if not os.path.exists(EXCEL_FILE):
-        return None, None
-
-    # --- 1. LOAD MASTER LEDGER (For Jira Links) ---
-    projects = []
-    
-    def get_sheet(name, type_name):
-        try:
-            df = pd.read_excel(EXCEL_FILE, sheet_name=name)
-            df['Type'] = type_name
-            return df
-        except: return None
-
-    # Load and combine ledgers
-    for sheet, ptype in [
-        ("3D Project Ledger", "3D"), 
-        ("WEB-Shell--Project Ledger", "Web"),
-        ("LNOO Venues", "L
+    "Final Assets prepration and Public VV
